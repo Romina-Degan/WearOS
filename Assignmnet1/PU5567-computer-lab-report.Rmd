@@ -1,0 +1,125 @@
+---
+title: "PU5558-PU5567-computer-lab-report"
+author: "Anonymous"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load necessary packages
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(corrplot)
+library(psych)
+library(vip)
+library(Hmisc)
+library(VIM)
+```
+
+## Load chosen dataset
+
+```{r}
+kneeData <- read_csv("Knee_Replacement_CCG 2021.csv")
+kneeData <- kneeData %>%
+    select(-Procedure, -Year, -"Revision Flag",  -"Provider Code") %>%
+    drop_na() %>%
+    unique()
+glimpse(kneeData)
+```
+
+## Dataset description
+```{r}
+describe(kneeData, fast=TRUE)
+```
+
+The following dataset depicts 
+## Suitable machine learning algorithm for three questions:
+
+1. Before the operation, can we estimate the post-operative EQ5D index for a patient?
+Given certain presence of certain predictors being present, this would fall into supervised learning there are no missing values so no semi supervised is needed
+0.364, 0.691, can use simple linear regression then test how well the model preforms with different AIC values. This question will be used for this report  
+
+2. Before the operation, can we predict how much pain a patient will have after the operation?
+Since pain is measured in categories we would want a classifier to predict which index the post operative pain will be
+in this case we would use an unsupervised algorithim, seems intuitive that you would use forests
+
+0 = Severe
+1 = Moderate
+2 = Mild
+3 = Very Mild
+4 = None
+9 = Missing
+
+3. Before the operation, can we calculate how many patients have had previous surgery? 
+Here we can use supervised/semi-supervised learning methods to cualcyate the numerical value of the
+patiens that have had the previous surgery. The results is binary wether they have or have not had it 
+
+
+
+
+
+## Model building to answer chosen question
+
+1.	Data splitting
+
+```{r}
+kneeSplit <- kneeData %>%
+    initial_split(prop = 0.8, strata = "Post-Op Q EQ5D Index")
+    kneeTrain <- training(kneeSplit)
+    kneeTest <- testing(kneeSplit)  
+print(sapply(kneeTrain, is.numeric))
+```
+
+2.	Selection and preprocessing of predictors
+A quick analysis of the data shows that there are serveral variables that have a high proportion of missing values. This is represented with the 
+median value being the missing value "9" this level of missing data will have severe effects on the true relationship between the post-op pain and the 
+independent variables. Deleting these values would not be suitable as they contain relevant information that could have affect post-op pain (reference how co-morbidites increase
+complications/pain managment post-op). As to the specifications of this assignment these values will be recoded so the value "9" represents "No".
+
+Categorical values in the Age Band need to be recoded into dummy variables for regression analysis, the following encodings have been used in replacement
+of the original categories
+
+1- 50 to 59
+2- 60-69
+3- 70-79
+4- 80-89 
+
+Both Gender and Age Band have a considerable percentage of missing values equating to almost half the dataset, these will be addressed with different methods. 
+Age Band will use imputation in the form of imputating the median of the categories from the encodings (1-4). Gender will use KNN imputation to maintain some randomness to the distribution. 
+
+```{r}
+# corrKnee <- Hmisc::rcorr(cor(kneeTrain), type="spearman")
+# kneeCorrPlot <- corrplot(corr=corrKnee$r, p.mat = corrKnee$r, sig.level = 0.05, tl.cex = 0.3)
+kneeData["Age Band"][kneeData["Age Band"] == "50 to 59"] <- "1"
+kneeData["Age Band"][kneeData["Age Band"] == "60 to 69"] <- "2"
+kneeData["Age Band"][kneeData["Age Band"] == "70 to 79"] <- "3"
+kneeData["Age Band"][kneeData["Age Band"] == "80 to 89"] <- "4"
+kneeData$"Age Band" <- as.numeric(as.character(kneeData$"Age Band"))
+kneeData["Age Band"][is.na(kneeData["Age Band"])] <- median(kneeData$"Age Band", na.rm = TRUE)
+print(kneeData$"Age Band")
+
+kneeData[kneeData=="*"] <- NA
+imputedGender <- kNN(kneeData, k = 50)
+kneeData$Gender <- imputedGender$Gender
+
+print(kneeData$Gender)
+```
+
+3.	Model specification and training
+
+```{r}
+
+```
+
+4.	Model evaluation
+
+```{r}
+
+```
+
+## Limitations of machine learning model
+

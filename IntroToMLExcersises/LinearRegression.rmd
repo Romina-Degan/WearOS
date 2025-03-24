@@ -1,0 +1,65 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidymodels)
+library(corrplot)
+library(vip)
+```
+
+```{r read-data}
+scotData <- read_csv("Scotland-Vulnerability-Resource_v0.2.csv")
+glimpse(scotData)
+```
+
+```{r perpare-data-datazone}
+DzData <- scotData %>%
+    select(-Postcode) %>%
+    drop_na() %>%
+    unique()
+```
+
+```{r select-data}
+DzData <- DzData %>%
+    select(-Data_Zone, -Intermediate_Zone, -Council_area, -NHS_Health_Board_Region, -Total_population, -Working_age_population, -URname)
+```
+
+```{r plot-output}
+DzData %>% ggplot(aes(x= DEPRESS)) + geom_histogram(bins=30,col="white")
+```
+
+```{r data-splitting}
+DzSplit <- DzData %>%
+    initial_split(prop = 0.8, strata = DEPRESS)
+    DzTrain <- training(DzSplit)
+    DzTest <- testing(DzSplit)
+```
+
+```{r data-corr}
+DzCorr <- cor(DzTrain %>% select_if(is.numeric))
+corrplot(DzCorr, tl.cex = 0.5)
+```
+
+```{r scatterplot}
+DzTrain %>% ggplot(aes(x = SIMD2020_Health_Domain_Rank, y=DEPRESS)) + geom_point()
+```
+
+```{r specifiy-recipie}
+simpleRec <- DzTrain %>%
+    recipe(DEPRESS ~ Income_rate + Employment_rate + no_qualifications + CIF + EMERG + Attendance + SIMD2020_Health_Domain_Rank) %>%
+    step_zv(all_predictors()) %>% 
+    step_corr(all_predictors())
+```
+
+```{r specify-model}
+lmSpec <- linear_reg()
+```
+
+```{r specify-workflow}
+DzWorkflow <- workflow() %>%
+    add_recipe(simpleRec) %>%
+    add_model(lmSpec)
+```
+

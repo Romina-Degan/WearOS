@@ -1,0 +1,95 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidymodels)
+library(corrplot)
+library(vip)
+```
+
+```{r read-data}
+
+heartData <- read_csv("heart.csv")
+glimpse(heartData)
+summary(heartData)
+```
+
+```{r factor-outcome}
+heartData$target <- as.factor(heartData$target)
+```
+
+## Data Splitting
+```{r data-splitting}
+# Create the split
+heartSplit <- heartData %>%
+    initial_split(prop = 0.8, strata = target)
+
+# Save the two datasets as objects
+heartTrain <- training(heartSplit)
+heartTest <- testing(heartSplit)
+
+```
+
+```{r example- boxplot}
+heartTrain %>% ggplot(aes(x=target, y=age)) +geom_boxplot()
+```
+
+```{r}
+heartTrain %>% ggplot(aes(x = as.factor(cp), fill=target)) + 
+geom_bar(position = "dodge")
+```
+
+```{r specifiy-recipie}
+simpleRec <- heartTrain %>%
+    recipe(target ~ cp + thalach + exang + oldpeak + ca) %>%
+    step_zv(all_predictors()) %>%
+    step_corr(all_predictors())
+
+```
+
+```{r specify-model}
+lgSpec <- logistic_reg()
+```
+
+```{r specify-workflow}
+heartWFlow <- workflow() %>%
+    add_recipe(simpleRec) %>%
+    add_model(lgSpec)
+```
+
+```{r train-model}
+heartBoot <- bootstraps(heartTrain)
+heartWFlowFit <- heartWFlow %>%
+    fit_resamples(
+        resamples=heartBoot, 
+        control = control_resamples(save_pred = TRUE)
+    )
+```
+
+``` {r performance-metrics}
+collect_metrics(heartWFlowFit)
+
+results <- heartWFlowFit %>%
+    collect_predictions()
+
+results %>%
+    conf_mat(target, .pred_class)
+```
+
+```{r plot-ROC}
+results %>%
+    group_by(id) %>%
+    roc_curve(target, .pred_0) %>%
+    ggplot(aes(1 - specificity, sensitivity, color = id)) +
+    geom_abline(lty = 2, color = "gray80", size = 1.5) +
+    geom_path(show.legend = FALSE, alpha = 0.6, size = 1.2) 
+    coord_equal()
+```
+
+```{r final-fit}
+# Fit the final model
+heartWFlowFinalFit <- heartWFlow %>% last_fit(heartSplit)
+collect_metrics(heartWFlowFinalFit)
+```

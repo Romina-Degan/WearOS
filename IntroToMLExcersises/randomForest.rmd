@@ -1,0 +1,41 @@
+```{r setup, include= FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidymodels)
+library(corrplot)
+
+library(vip)
+```
+
+```{r read-data}
+svrData <- read_csv("Scotland-Vulnerability-Resource_v0.2.csv")
+glimpse(svrData)
+summary(svrData)
+```
+
+```{r removeData}
+dzData <- svrData %>%
+    select(DEPRESS, Income_rate, Income_count, Employment_rate, Employment_count, CIF, EMERG, SIMD2020_Health_Domain_Rank) %>%
+    drop_na() %>%
+    unique()
+
+```
+
+```{r data-split}
+dzSplit <- dzData %>% initial_split(prop = 0.8, strata = DEPRESS)
+dzTrain <- training(dzSplit)
+dzTest <- testing(dzSplit)
+```
+
+```{r selecting-parameters}
+dzCorr <- cor(dzTrain %>% select_if(is.numeric))
+corrplot(dzCorr, tl.cex = 0.5)
+```
+
+```{r assumptions-lm}
+ dzTrain %>% ggplot(aes(x = SIMD2020_Health_Domain_Rank, y = DEPRESS)) +
+     geom_point()
+```
