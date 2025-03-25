@@ -15,6 +15,8 @@ library(tidyverse)
 library(tidymodels)
 library(corrplot)
 library(psych)
+library(ggplot2)
+library(reshape2)
 library(vip)
 library(Hmisc)
 library(VIM)
@@ -67,6 +69,20 @@ patiens that have had the previous surgery. The results is binary wether they ha
 1.	Data splitting
 
 ```{r}
+kneeData["Age Band"][kneeData["Age Band"] == "50 to 59"] <- "1"
+kneeData["Age Band"][kneeData["Age Band"] == "60 to 69"] <- "2"
+kneeData["Age Band"][kneeData["Age Band"] == "70 to 79"] <- "3"
+kneeData["Age Band"][kneeData["Age Band"] == "80 to 89"] <- "4"
+kneeData$"Age Band" <- as.numeric(as.character(kneeData$"Age Band"))
+kneeData["Age Band"][is.na(kneeData["Age Band"])] <- median(kneeData$"Age Band", na.rm = TRUE)
+kneeData[kneeData=="*"] <- NA
+imputedGender <- kNN(kneeData, k = 10)
+kneeData$Gender <- imputedGender$Gender
+kneeData$Gender <- as.numeric(kneeData$Gender)
+
+
+
+
 kneeSplit <- kneeData %>%
     initial_split(prop = 0.8, strata = "Post-Op Q EQ5D Index")
     kneeTrain <- training(kneeSplit)
@@ -83,8 +99,8 @@ complications/pain managment post-op). As to the specifications of this assignme
 Categorical values in the Age Band need to be recoded into dummy variables for regression analysis, the following encodings have been used in replacement
 of the original categories
 
-1- 50 to 59
-2- 60-69
+1- 50 to 59 "\n"
+2- 60-69 
 3- 70-79
 4- 80-89 
 
@@ -94,20 +110,44 @@ Age Band will use imputation in the form of imputating the median of the categor
 ```{r}
 # corrKnee <- Hmisc::rcorr(cor(kneeTrain), type="spearman")
 # kneeCorrPlot <- corrplot(corr=corrKnee$r, p.mat = corrKnee$r, sig.level = 0.05, tl.cex = 0.3)
-kneeData["Age Band"][kneeData["Age Band"] == "50 to 59"] <- "1"
-kneeData["Age Band"][kneeData["Age Band"] == "60 to 69"] <- "2"
-kneeData["Age Band"][kneeData["Age Band"] == "70 to 79"] <- "3"
-kneeData["Age Band"][kneeData["Age Band"] == "80 to 89"] <- "4"
-kneeData$"Age Band" <- as.numeric(as.character(kneeData$"Age Band"))
-kneeData["Age Band"][is.na(kneeData["Age Band"])] <- median(kneeData$"Age Band", na.rm = TRUE)
-print(kneeData$"Age Band")
 
-kneeData[kneeData=="*"] <- NA
-imputedGender <- kNN(kneeData, k = 50)
-kneeData$Gender <- imputedGender$Gender
 
-print(kneeData$Gender)
+kneeCorr <- cor(kneeTrain)
+corrplot(kneeCorr, method = "color", type = "lower", tl.col = "black", tl.srt = 50, number.cex = 0.5, tl.cex = 0.3)
+
+
+kneeCorrPostOp <- t(kneeCorr[, c(46), drop = FALSE])
+corrplot(kneeCorrPostOp,method = "color", tl.col = "black", tl.srt = 50,tl.cex = 0.3, cex.axis=0.3)
+
+
+# kneeCorrSig <- cor(kneeTrain[, c(19, 37, 25, 35, 40, 39, 49, 45, 64, 51, 22, 3, 32, 34, 24, 21)])
+
+# kneeCorrSig <- cor(kneeTrain[, c(
+#     # kneeTrain$"Post-Op Q EQ5D Index Profile",
+#     # kneeTrain$Depression, 
+#     kneeTrain$"Knee Replacement Post-Op Q Pain",
+#     kneeTrain$"Pre-Op Q Self-Care",
+#     kneeTrain$"Pre-Op Q Discomfort",
+#     kneeTrain$"Pre-Op Q Mobility",
+#     kneeTrain$"Pre-Op Q Assisted",
+#     kneeTrain$"Post-Op Q Mobility",
+#     kneeTrain$"Post-Op Q Activity",
+#     kneeTrain$"Post-Op Q Satisfaction",
+#     kneeTrain$"Post-OP Q Discomfort",
+#     kneeTrain$"Post-OP Q Bleeding",
+#     kneeTrain$"Post-OP Q Allergy",
+#     kneeTrain$"Post-Op Q EQ VAS",
+#     kneeTrain$"Knee Replacement Pre-Op Q Pain"
+
+# )])
+# corrplot(kneeCorrSig)
+
 ```
+
+The full correlation plot is displayed above but the values and their labels are difficult to read with the 77 variables that we have to consider. Extrcation of siginificant 
+correlations in the main plot will be used to hilight the variables that will be used as predictors for the model. 
+
+
 
 3.	Model specification and training
 
