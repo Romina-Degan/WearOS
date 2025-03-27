@@ -87,7 +87,6 @@ kneeSplit <- kneeData %>%
     initial_split(prop = 0.8, strata = "Post-Op Q EQ5D Index")
     kneeTrain <- training(kneeSplit)
     kneeTest <- testing(kneeSplit)  
-print(sapply(kneeTrain, is.numeric))
 ```
 
 2.	Selection and preprocessing of predictors
@@ -108,57 +107,82 @@ Both Gender and Age Band have a considerable percentage of missing values equati
 Age Band will use imputation in the form of imputating the median of the categories from the encodings (1-4). Gender will use KNN imputation to maintain some randomness to the distribution. 
 
 ```{r}
-# corrKnee <- Hmisc::rcorr(cor(kneeTrain), type="spearman")
-# kneeCorrPlot <- corrplot(corr=corrKnee$r, p.mat = corrKnee$r, sig.level = 0.05, tl.cex = 0.3)
-
 
 kneeCorr <- cor(kneeTrain)
 corrplot(kneeCorr, method = "color", type = "lower", tl.col = "black", tl.srt = 50, number.cex = 0.5, tl.cex = 0.3)
 
 
 kneeCorrPostOp <- t(kneeCorr[, c(46), drop = FALSE])
-corrplot(kneeCorrPostOp,method = "color", tl.col = "black", tl.srt = 50,tl.cex = 0.3, cex.axis=0.3)
-
-
-# kneeCorrSig <- cor(kneeTrain[, c(19, 37, 25, 35, 40, 39, 49, 45, 64, 51, 22, 3, 32, 34, 24, 21)])
-
-# kneeCorrSig <- cor(kneeTrain[, c(
-#     # kneeTrain$"Post-Op Q EQ5D Index Profile",
-#     # kneeTrain$Depression, 
-#     kneeTrain$"Knee Replacement Post-Op Q Pain",
-#     kneeTrain$"Pre-Op Q Self-Care",
-#     kneeTrain$"Pre-Op Q Discomfort",
-#     kneeTrain$"Pre-Op Q Mobility",
-#     kneeTrain$"Pre-Op Q Assisted",
-#     kneeTrain$"Post-Op Q Mobility",
-#     kneeTrain$"Post-Op Q Activity",
-#     kneeTrain$"Post-Op Q Satisfaction",
-#     kneeTrain$"Post-OP Q Discomfort",
-#     kneeTrain$"Post-OP Q Bleeding",
-#     kneeTrain$"Post-OP Q Allergy",
-#     kneeTrain$"Post-Op Q EQ VAS",
-#     kneeTrain$"Knee Replacement Pre-Op Q Pain"
-
-# )])
-# corrplot(kneeCorrSig)
+corrplot(kneeCorrPostOp,method = "number", tl.col = "black", tl.srt = 50,tl.cex = 0.3, cex.axis=0.3, number.cex = 0.2)
+for (i in seq_along(kneeTrain)) {
+  cat("Index:", i, "- Name:", colnames(kneeTrain)[i], "\n")
+}
 
 ```
 
 The full correlation plot is displayed above but the values and their labels are difficult to read with the 77 variables that we have to consider. Extrcation of siginificant 
-correlations in the main plot will be used to hilight the variables that will be used as predictors for the model. 
+correlations in the main plot will be used to hilight the variables that will be used as predictors for the model. Correlation values were observed through the plots and 
+all predictor values that were above 0.5 or below -0.5 were considered as significant predictors. This is puerly numerically based, but given clinical expertise there 
+may be some predictors that may want to be included into the final model.  
 
 
+```{r specifiy-recipie}
+colnames(kneeTrain) <- make.names(colnames(kneeTrain))
+print(colnames(kneeTrain))
 
+kneeModelRec <- kneeTrain %>%
+    recipe(Post.Op.Q.EQ5D.Index ~
+        Post.Op.Q.Mobility +
+        Post.Op.Q.Self.Care +
+        Post.Op.Q.Discomfort + 
+        Post.Op.Q.EQ5D.Index.Profile +
+        Post.Op.Q.EQ.VAS +
+        Knee.Replacement.Post.Op.Q.Pain + 
+        Knee.Replacement.Post.Op.Q.Night.Pain +
+        Knee.Replacement.Post.Op.Q.Washing +
+        Knee.Replacement.Post.Op.Q.Transport +
+        Knee.Replacement.Post.Op.Q.Walking +
+        Knee.Replacement.Post.Op.Q.Standing +
+        Knee.Replacement.Post.Op.Q.Limping +
+        Knee.Replacement.Post.Op.Q.Work +
+        Knee.Replacement.Post.Op.Q.Confidence +
+        Knee.Replacement.Post.Op.Q.Shopping +
+        Knee.Replacement.Post.Op.Q.Stairs +
+        Knee.Replacement.Post.Op.Q.Score) %>%
+    step_zv(all_predictors()) %>%
+    step_corr(all_predictors())
+
+```
 3.	Model specification and training
 
 ```{r}
+linearModel <- linear_reg()
 
+kneeLM <- workflow() %>%
+    add_recipe(kneeModelRec) %>%
+    add_model(linearModel)
+
+kneeModelFit <- kneeLM %>%
+    fit(data = kneeTrain)
+
+fittedKneeModel <- extract_fit_engine(kneeModelFit)
+plot(fittedKneeModel, 1)
+plot(fittedKneeModel, 2)
+plot(fittedKneeModel, 3)
+
+kneeModelFit %>% extract_fit_parsnip() %>% vip(num_features=8)
 ```
 
 4.	Model evaluation
 
 ```{r}
+predictedEQ <- kneeModelFit %>%
+    predict(new_data = kneeTrain)
 
+resultsTrain <- kneeTrain %>%
+    bind_cols(predictedEQ) %>%
+    rename(kneeEQPred= .pred)
+metrics(resultsTrain, truth=Post.Op.Q.EQ5D.Index, estimate= kneeEQPred)
 ```
 
 ## Limitations of machine learning model
