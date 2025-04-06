@@ -32,6 +32,7 @@ library(VIM)
 library(caret)
 library(flextable)
 library(gtsummary)
+library(randomForest)
 ```
 
 ## Load chosen dataset
@@ -127,7 +128,7 @@ patiens that have had the previous surgery. The results is binary wether they ha
 
 1.	Data splitting
 
-```{r}
+```{r imputation of data}
 kneeData["Age Band"][kneeData["Age Band"] == "50 to 59"] <- "1"
 kneeData["Age Band"][kneeData["Age Band"] == "60 to 69"] <- "2"
 kneeData["Age Band"][kneeData["Age Band"] == "70 to 79"] <- "3"
@@ -165,7 +166,7 @@ of the original categories
 Both Gender and Age Band have a considerable percentage of missing values equating to almost half the dataset, these will be addressed with different methods. 
 Age Band will use imputation in the form of imputating the median of the categories from the encodings (1-4). Gender will use KNN imputation to maintain some randomness to the distribution. 
 
-```{r}
+```{r correlation analysis}
 
 kneeCorr <- cor(kneeTrain)
 corrplot(kneeCorr, method = "color", type = "lower", tl.col = "black", tl.srt = 50, number.cex = 0.5, tl.cex = 0.3)
@@ -188,7 +189,6 @@ may be some predictors that may want to be included into the final model.
 ```{r specifiy-recipie}
 colnames(kneeTrain) <- make.names(colnames(kneeTrain))
 colnames(kneeTest) <- make.names(colnames(kneeTest))
-print(colnames(kneeTrain))
 
 kneeModelRec <- kneeTrain %>%
     recipe(Post.Op.Q.EQ5D.Index ~
@@ -215,37 +215,48 @@ kneeModelRec <- kneeTrain %>%
 ```
 3.	Model specification and training
 
-```{r}
-linearModel <- linear_reg()
+```{r call model}
+kneeRandForest <- rand_forest() %>%
+    set_mode("regression") %>%
+    set_engine("randomForest")
 
-kneeLM <- workflow() %>%
+kneeWorkflow <- workflow() %>%
     add_recipe(kneeModelRec) %>%
-    add_model(linearModel)
+    add_model(kneeRandForest)
 
-kneeModelFit <- kneeLM %>%
+kneeFitModel <- kneeWorkflow %>%
     fit(data = kneeTrain)
-
-fittedKneeModel <- extract_fit_engine(kneeModelFit)
-plot(fittedKneeModel, 1)
-plot(fittedKneeModel, 2)
-plot(fittedKneeModel, 3)
-
-kneeModelFit %>% extract_fit_parsnip() %>% vip(num_features=8)
 ```
 
-4.	Model evaluation
+```{r identify important vraibles}
+kneeFitModel %>%
+    extract_fit_parsnip() %>%
+    vip(num_features=4)
+```
+
+4.	Model evaluation 
+Code has 
 
 ```{r}
-predictedEQ <- kneeModelFit %>%
+predEQVal <- kneeFitModel %>%
     predict(new_data = kneeTest)
 
-resultsTest <- kneeTest %>%
-    bind_cols(predictedEQ) %>%
-    rename(kneeEQPred= .pred)
+kneeResult <- kneeTest %>%
+    bind_cols(predEQVal) %>%
+    rename(predEQ = .pred)
 
-metrics(resultsTest, truth=Post.Op.Q.EQ5D.Index, estimate= kneeEQPred)
+metrics(kneeResult, truth = Post.Op.Q.EQ5D.Index, estimate = predEQ)
 ```
 
+```{r}
+kneeResult %>%
+    ggplot(aes(x = Post.Op.Q.EQ5D.Index, y = predEQ)) +
+    geom_abline(intercept = 0, slope = 1) +
+    geom_point() +
+    xlab("Actual Outcome Values")
+    ylab("Predicted Outcome Values")
+
+```
 <!-- # ```{r cross fold k validation models}
 # crossVal <- trainControl(method = "cv", number = 8)
 
