@@ -1,53 +1,112 @@
 ---
 title: "PU5558-PU5567-computer-lab-report"
-author: "Anonymous"
+author: "Romina-Degan"
 output: pdf_document
 ---
 
+## Introduction 
+
+The following report is based on Provisional Patient Reported Outcome Measures (PROMS) specifically on the outcome of Hip and Knee Replacement procedures completed between April 2020 to March 2021,
+provided by NHS England. For this report the focus will be on the outcome measures of knee replacement surgery. Specific outcome measures pertaining to the 
+Quality Of Life (QOL) to the patient have been recorded through a visual analouge scale designed to measure the self-reported status of the patients quality of life pre/post surgery. These values 
+gathered from the survery will be used to inform the models.  
+
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
 ## Load necessary packages
 
-```{r}
+```{r load libraries, message=FALSE}
 library(tidyverse)
 library(tidymodels)
 library(corrplot)
 library(psych)
 library(ggplot2)
+library(rmarkdown)
 library(reshape2)
 library(vip)
 library(Hmisc)
 library(VIM)
+library(caret)
+library(flextable)
+library(gtsummary)
 ```
 
 ## Load chosen dataset
 
-```{r}
+
+
+```{r load data}
 kneeData <- read_csv("Knee_Replacement_CCG 2021.csv")
 kneeData <- kneeData %>%
     select(-Procedure, -Year, -"Revision Flag",  -"Provider Code") %>%
     drop_na() %>%
     unique()
+```
+
+\newpage
+```{r display summary of data}
 glimpse(kneeData)
-```
+# glimpseData <- kneeData[, c("Age Band", "Gender", "Pre-Op Q Assisted", "Heart Disease", "Arthritis",
+#      "Post-Op Q Bleeding", "Pre-Op Q EQ5D Index Profile", "Post-Op Q EQ5D Index Profile",
+#      "Pre-Op Q EQ5D Index", "Post-Op Q EQ5D Index")]
+# kable(glimpseData, format = "latex", booktabs = TRUE, longtable = TRUE, 
+#     caption="Rate of Change within an Individual Health Board Against its Moving Average") %>%
+#     kable_styling(latex_options = c("striped", "hold_position")) %>%
+#     row_spec(0, bold = TRUE) %>%
+#     column_spec(1, "2cm") %>%
+#     row_spec(15, bold = TRUE) %>%
+#     kableExtra::landscape()
 
+# set_flextable_defaults(
+#     font.font.family = "Arial", font.size = 10,
+#     border.color = "gray", big.mark = ""
+# )
+
+
+# ft <- flextable(head(kneeData), col_keys = c(
+#     "Age Band", "Gender", "Pre-Op Q Assisted", "Heart Disease", "Arthritis",
+#     "Post-Op Q Bleeding", "Pre-Op Q EQ5D Index Profile", "Post-Op Q EQ5D Index Profile",
+#     "Pre-Op Q EQ5D Index", "Post-Op Q EQ5D Index"
+# )) |> bold(part = "header")
+# set_table_properties(ft, width=.5, layout = "autofit")
+```
 ## Dataset description
-```{r}
-describe(kneeData, fast=TRUE)
-```
 
-The following dataset depicts 
+This dataset uses data from NHS England regarding PROMS for knee replacement surgery. The way in which this data has been gathered is to collect self-reported symptoms/QOL metrics 
+through two standard procedures. One survey is the EQ-5DTM Index designed to evaluate the QOL in terms of of doing daily tasks,such as(cite NHS PROMS): 
+* Ability to pursue usual activites 
+* Current experience of anxiety and/or depression, if any
+* Current experience of pain and discomfort if any 
+* Mobility
+* Ability to wash and dress themselves
+The closer the EQ5 value is to 1, the better the patients QOL. 
+
+While the EQ5 focuses on day to day tasks the EQ-VAS focuses on pre/post operative outcomes through a visual thermomemter scale rannging from 0 to 100. This scale is designed to aid 
+patients in describing how they feel post operation about the results and if their problems pre operation have been addressed with the surgery. 
+
+Visually inspecting the database we see that Age Band and Gender have many missing values. Alongside this, there are many missing values for co-morbidites. As instructed all missing values for 
+co-morbidites denotes as 9 will be taken as a no value. However, since Age Band and Gender typically are important factors (especially as confounders), these values will be imputed. Since there are 
+a possible 77 variables to provide summary statstics on, only specific columns relevant to the following questions below will be considered.  
+```{r display summary statstics}
+
+kneeData |> tbl_summary()
+# kneeData |> tbl_summary(include=c("Age Band","Gender","Knee Replacement Post-Op Q Pain","Post-Op Q EQ5D Index","Pre-Op Q Previous Surgery" ))
+
+```
 ## Suitable machine learning algorithm for three questions:
 
-1. Before the operation, can we estimate the post-operative EQ5D index for a patient?
-Given certain presence of certain predictors being present, this would fall into supervised learning there are no missing values so no semi supervised is needed
-0.364, 0.691, can use simple linear regression then test how well the model preforms with different AIC values. This question will be used for this report  
+***1. Before the operation, can we estimate the post-operative EQ5D index for a patient?***
+The EQ5 index is provided as a float value between 0 and 1. Due to its continous nature a suitable supervised model to answer this question would be a linear regression model. 
+Since we wish to predict a continous variable against possible predictor variables pre/post surgery, we would have to find correlations between an increasing EQ5 index value 
+and variables in the dataset. Therefore, a linear model would provide correlations between a changing EQ5D value and its associated predictors. This question will be used for the 
+report. 
 
-2. Before the operation, can we predict how much pain a patient will have after the operation?
-Since pain is measured in categories we would want a classifier to predict which index the post operative pain will be
-in this case we would use an unsupervised algorithim, seems intuitive that you would use forests
+***2. Before the operation, can we predict how much pain a patient will have after the operation?***
+Since pain is measured as categories, a model designed for classification would fit this specification. For this we would have to use an unsupervised model, like a random forest model. 
+The model would work by running through each of the variables and checking that
 
 0 = Severe
 1 = Moderate
@@ -56,7 +115,7 @@ in this case we would use an unsupervised algorithim, seems intuitive that you w
 4 = None
 9 = Missing
 
-3. Before the operation, can we calculate how many patients have had previous surgery? 
+***3. Before the operation, can we calculate how many patients have had previous surgery?***
 Here we can use supervised/semi-supervised learning methods to cualcyate the numerical value of the
 patiens that have had the previous surgery. The results is binary wether they have or have not had it 
 
@@ -84,7 +143,7 @@ kneeData$Gender <- as.numeric(kneeData$Gender)
 
 
 kneeSplit <- kneeData %>%
-    initial_split(prop = 0.8, strata = "Post-Op Q EQ5D Index")
+    initial_split(prop = 0.7, strata = "Post-Op Q EQ5D Index")
     kneeTrain <- training(kneeSplit)
     kneeTest <- testing(kneeSplit)  
 ```
@@ -98,7 +157,7 @@ complications/pain managment post-op). As to the specifications of this assignme
 Categorical values in the Age Band need to be recoded into dummy variables for regression analysis, the following encodings have been used in replacement
 of the original categories
 
-1- 50 to 59 "\n"
+1- 50 to 59 
 2- 60-69 
 3- 70-79
 4- 80-89 
@@ -128,6 +187,7 @@ may be some predictors that may want to be included into the final model.
 
 ```{r specifiy-recipie}
 colnames(kneeTrain) <- make.names(colnames(kneeTrain))
+colnames(kneeTest) <- make.names(colnames(kneeTest))
 print(colnames(kneeTrain))
 
 kneeModelRec <- kneeTrain %>%
@@ -177,13 +237,21 @@ kneeModelFit %>% extract_fit_parsnip() %>% vip(num_features=8)
 
 ```{r}
 predictedEQ <- kneeModelFit %>%
-    predict(new_data = kneeTrain)
+    predict(new_data = kneeTest)
 
-resultsTrain <- kneeTrain %>%
+resultsTest <- kneeTest %>%
     bind_cols(predictedEQ) %>%
     rename(kneeEQPred= .pred)
-metrics(resultsTrain, truth=Post.Op.Q.EQ5D.Index, estimate= kneeEQPred)
+
+metrics(resultsTest, truth=Post.Op.Q.EQ5D.Index, estimate= kneeEQPred)
 ```
+
+<!-- # ```{r cross fold k validation models}
+# crossVal <- trainControl(method = "cv", number = 8)
+
+# kFoldModel <- 
+
+# ``` -->
 
 ## Limitations of machine learning model
 
