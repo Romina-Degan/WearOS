@@ -93,8 +93,8 @@ co-morbidites denotes as 9 will be taken as a no value. However, since Age Band 
 a possible 77 variables to provide summary statstics on, only specific columns relevant to the following questions below will be considered.  
 ```{r display summary statstics}
 
-kneeData |> tbl_summary()
-# kneeData |> tbl_summary(include=c("Age Band","Gender","Knee Replacement Post-Op Q Pain","Post-Op Q EQ5D Index","Pre-Op Q Previous Surgery" ))
+
+kneeData |> tbl_summary(include=c("Age Band","Gender","Knee Replacement Post-Op Q Pain","Post-Op Q EQ5D Index","Pre-Op Q Previous Surgery" ))
 
 ```
 ## Suitable machine learning algorithm for three questions:
@@ -102,21 +102,24 @@ kneeData |> tbl_summary()
 ***1. Before the operation, can we estimate the post-operative EQ5D index for a patient?***
 The EQ5 index is provided as a float value between 0 and 1. Due to its continous nature a suitable supervised model to answer this question would be a linear regression model. 
 Since we wish to predict a continous variable against possible predictor variables pre/post surgery, we would have to find correlations between an increasing EQ5 index value 
-and variables in the dataset. Therefore, a linear model would provide correlations between a changing EQ5D value and its associated predictors. This question will be used for the 
-report. 
+and variables in the dataset. There are 2 possible approaches to answering this question: a simple linear regression model and a random forest for regression. Both models wont be made, 
+however assumptions on the dataset will guide the choice of model; if the dataset is found to have a non-linear relationship or standard test to check for normality does not hold true, a 
+random forest will be used. A linear regression model is simpler to run and provides better interpratibility of the model, however if assumptions do not hold, a random forest for regression 
+must be used. This question will be used to complete the report.
 
 ***2. Before the operation, can we predict how much pain a patient will have after the operation?***
-Since pain is measured as categories, a model designed for classification would fit this specification. For this we would have to use an unsupervised model, like a random forest model. 
-The model would work by running through each of the variables and checking that
-
-0 = Severe
-1 = Moderate
-2 = Mild
-3 = Very Mild
-4 = None
-9 = Missing
+Since pain is measured as ordinal categories, a model designed for classification would fit this specification. Referencing (mention table figure) we see that 25% of data points are missing values 
+for the questions regarding pain. If we were to use an unsupervised model it may not capture the true relationship between predictors and the outcome variable due to the vast number of unlabelled data points for a siginificant predictor. To 
+tackle this issue of missing data, a semi-supervised model such as a semi-supervised support vector machine can overcome the missing data barrier. The semi-supervised SVM would use 
+a mixture of labelled an unlabelled data to create descion boundaries for the different pain categories, and predict the positioning of a data point to its relative class given the presence 
+of certain predictor variables. The level of computation a semi-supervised SVM has may be determinal to the models overall performance, but coupled with the fact that there are many other missing 
+values in other questions regarding the QOL status of the patient, imputation on specific question would be difficult to complete without clinical knowledge to inform the possible current state of the patient. Therefore, 
+the increased computational power for the model may be benefical when trying to address the gaps in data. 
 
 ***3. Before the operation, can we calculate how many patients have had previous surgery?***
+
+
+
 Here we can use supervised/semi-supervised learning methods to cualcyate the numerical value of the
 patiens that have had the previous surgery. The results is binary wether they have or have not had it 
 
@@ -126,45 +129,49 @@ patiens that have had the previous surgery. The results is binary wether they ha
 
 ## Model building to answer chosen question
 
-1.	Data splitting
+# 1.	Data splitting 
+
+Before the data is split into relevant train/test splits. The issue of Age Band and Gender both missing 35% of their data needs to be a handled. The following imputation is simple and doesnt 
+use external questions or factors to inform descion making. Age Band is recoded into group numbers and the median of the group numbers is taken. Then the median value is then imputed to the missing data. 
+
+Imputation of the Gender column is slightly more complex, with the method being a k Nearest Neighbour (kNN) approach. This approach tries to maintain the randomness of the gender data points, 
+(reference table) looking at the table there are 6% more females that get the surgery than males. Therefore using a simple 50-50 or a median split would lose the close difference in value between 
+the different genders. The KNN maintian thre nuisance in this split.
+The following table summaries the changes in the data values after imputation, the changes are as follows
+* Age Band - Median: Category 3, increase of 35% or 1,603 data points
+* Gender - Male: Increase of 693 cases (+26%), Female: Increase of 910 cases (+20%)
+
+Replacing missing values was only complete for age and gender since these values can be more easily accounted for in comparison to missing questionare values. Replacing missing questionare values
+may have serious consequences to the predictions of the model, creating false equivalences. With certain predictors given more importance due to the inputted data. Removing these data values was not an option, 
+since we would be losing up to 80% of the questionare data with some questions (hilight table). To ensure that the integrity of the the patient reported outcomes remain the same, more emphasis 
+will be placed on the models to handle missing data such as a random forest (RF) model for regression. RF models dont need imputation of missing values and they dont suffer 
+from underpreforming from the lack of labelled data points. This is due to their automatic handiling of missing data through surrogate splits. The randomForest package in R states in their documentation 
 
 ```{r imputation of data}
+#Recode age bands into numeric groupings for an easier interpreation of the median
 kneeData["Age Band"][kneeData["Age Band"] == "50 to 59"] <- "1"
 kneeData["Age Band"][kneeData["Age Band"] == "60 to 69"] <- "2"
 kneeData["Age Band"][kneeData["Age Band"] == "70 to 79"] <- "3"
 kneeData["Age Band"][kneeData["Age Band"] == "80 to 89"] <- "4"
 kneeData$"Age Band" <- as.numeric(as.character(kneeData$"Age Band"))
+
+#Impute median values into the missing age data
 kneeData["Age Band"][is.na(kneeData["Age Band"])] <- median(kneeData$"Age Band", na.rm = TRUE)
-kneeData[kneeData=="*"] <- NA
-imputedGender <- kNN(kneeData, k = 10)
+kneeData[kneeData == "*"] <- NA
+
+#Call a KNN function designed to split the 
+imputedGender <- kNN(kneeData, k = 1)
 kneeData$Gender <- imputedGender$Gender
 kneeData$Gender <- as.numeric(kneeData$Gender)
 
-
-
-
+kneeData |> tbl_summary(include=c("Age Band","Gender" ))
 kneeSplit <- kneeData %>%
     initial_split(prop = 0.7, strata = "Post-Op Q EQ5D Index")
     kneeTrain <- training(kneeSplit)
     kneeTest <- testing(kneeSplit)  
 ```
 
-2.	Selection and preprocessing of predictors
-A quick analysis of the data shows that there are serveral variables that have a high proportion of missing values. This is represented with the 
-median value being the missing value "9" this level of missing data will have severe effects on the true relationship between the post-op pain and the 
-independent variables. Deleting these values would not be suitable as they contain relevant information that could have affect post-op pain (reference how co-morbidites increase
-complications/pain managment post-op). As to the specifications of this assignment these values will be recoded so the value "9" represents "No".
-
-Categorical values in the Age Band need to be recoded into dummy variables for regression analysis, the following encodings have been used in replacement
-of the original categories
-
-1- 50 to 59 
-2- 60-69 
-3- 70-79
-4- 80-89 
-
-Both Gender and Age Band have a considerable percentage of missing values equating to almost half the dataset, these will be addressed with different methods. 
-Age Band will use imputation in the form of imputating the median of the categories from the encodings (1-4). Gender will use KNN imputation to maintain some randomness to the distribution. 
+2.	Selection and preprocessing of predictors 
 
 ```{r correlation analysis}
 
