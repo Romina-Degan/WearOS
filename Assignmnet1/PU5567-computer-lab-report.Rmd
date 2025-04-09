@@ -8,8 +8,8 @@ output: pdf_document
 
 The following report is based on Provisional Patient Reported Outcome Measures (PROMS) specifically on the outcome of Hip and Knee Replacement procedures completed between April 2020 to March 2021,
 provided by NHS England. For this report the focus will be on the outcome measures of knee replacement surgery. Specific outcome measures pertaining to the 
-Quality Of Life (QOL) to the patient have been recorded through a visual analouge scale designed to measure the self-reported status of the patients quality of life pre/post surgery. These values 
-gathered from the survery will be used to inform the models.  
+Quality Of Life (QOL) to the patient have been recorded through a visual analogue scale designed to measure the self-reported status of the patient’s quality of life pre/post-surgery. These values 
+gathered from the survey will be used to inform the models.  
 
 
 ```{r setup, include=FALSE}
@@ -25,6 +25,7 @@ library(corrplot)
 library(psych)
 library(ggplot2)
 library(rmarkdown)
+library(dplyr)
 library(reshape2)
 library(vip)
 library(Hmisc)
@@ -32,6 +33,7 @@ library(VIM)
 library(caret)
 library(flextable)
 library(gtsummary)
+library(data.table)
 library(randomForest)
 ```
 
@@ -42,9 +44,10 @@ library(randomForest)
 ```{r load data}
 kneeData <- read_csv("Knee_Replacement_CCG 2021.csv")
 kneeData <- kneeData %>%
-    select(-Procedure, -Year, -"Revision Flag",  -"Provider Code") %>%
+    select(-Procedure, -Year, -"Revision Flag", -"Provider Code") %>%
     drop_na() %>%
     unique()
+kneeDataNoImpute <- kneeData
 ```
 
 \newpage
@@ -77,44 +80,48 @@ glimpse(kneeData)
 ## Dataset description
 
 This dataset uses data from NHS England regarding PROMS for knee replacement surgery. The way in which this data has been gathered is to collect self-reported symptoms/QOL metrics 
-through two standard procedures. One survey is the EQ-5DTM Index designed to evaluate the QOL in terms of of doing daily tasks,such as(cite NHS PROMS): 
-* Ability to pursue usual activites 
+through two standard procedures. One survey is the EQ-5DTM Index designed to evaluate the QOL in terms of doing daily tasks, such as (cite NHS PROMS): 
+* Ability to pursue usual activities 
 * Current experience of anxiety and/or depression, if any
 * Current experience of pain and discomfort if any 
 * Mobility
 * Ability to wash and dress themselves
 The closer the EQ5 value is to 1, the better the patients QOL. 
 
-While the EQ5 focuses on day to day tasks the EQ-VAS focuses on pre/post operative outcomes through a visual thermomemter scale rannging from 0 to 100. This scale is designed to aid 
+While the EQ5 focuses on day-to-day tasks the EQ-VAS focuses on pre/post operative outcomes through a visual thermometer scale ranging from 0 to 100. This scale is designed to aid 
 patients in describing how they feel post operation about the results and if their problems pre operation have been addressed with the surgery. 
 
-Visually inspecting the database we see that Age Band and Gender have many missing values. Alongside this, there are many missing values for co-morbidites. As instructed all missing values for 
-co-morbidites denotes as 9 will be taken as a no value. However, since Age Band and Gender typically are important factors (especially as confounders), these values will be imputed. Since there are 
-a possible 77 variables to provide summary statstics on, only specific columns relevant to the following questions below will be considered.  
+Visually inspecting the database, we see that Age Band and Gender have many missing values. Alongside this, there are many missing values for co-morbidities. As instructed all missing values for 
+co-morbidities denoted as 9 will be taken as a no value. However, since Age Band and Gender typically are important factors (especially as confounders), these values will be imputed. Since there are 
+a possible 77 variables to provide summary statistics on, only specific columns relevant to the following questions below will be considered.  
+
 ```{r display summary statstics}
 
 
-kneeData |> tbl_summary(include=c("Age Band","Gender","Knee Replacement Post-Op Q Pain","Post-Op Q EQ5D Index","Pre-Op Q Previous Surgery" ))
+kneeData |> tbl_summary(include = c(
+    "Age Band", "Gender", "Knee Replacement Post-Op Q Pain",
+    "Post-Op Q EQ5D Index", "Pre-Op Q Previous Surgery", "Post-Op Q Assisted By"
+))
 
 ```
 ## Suitable machine learning algorithm for three questions:
 
 ***1. Before the operation, can we estimate the post-operative EQ5D index for a patient?***
-The EQ5 index is provided as a float value between 0 and 1. Due to its continous nature a suitable supervised model to answer this question would be a linear regression model. 
-Since we wish to predict a continous variable against possible predictor variables pre/post surgery, we would have to find correlations between an increasing EQ5 index value 
-and variables in the dataset. There are 2 possible approaches to answering this question: a simple linear regression model and a random forest for regression. Both models wont be made, 
-however assumptions on the dataset will guide the choice of model; if the dataset is found to have a non-linear relationship or standard test to check for normality does not hold true, a 
-random forest will be used. A linear regression model is simpler to run and provides better interpratibility of the model, however if assumptions do not hold, a random forest for regression 
+The EQ5 index is provided as a float value between 0 and 1. Due to its continuous nature a suitable supervised model to answer this question would be a linear regression model. 
+Since we wish to predict a continuous variable against possible predictor variables pre/post-surgery, we would have to find correlations between an increasing EQ5 index value 
+and variables in the dataset. There are 2 possible approaches to answering this question: a simple linear regression model and a random forest for regression. Both models won’t be made, 
+however, assumptions on the dataset will guide the choice of model; if the dataset is found to have a non-linear relationship or standard test to check for normality does not hold true, a 
+random forest will be used. A linear regression model is simpler to run and provides better interpretability of the model, however if assumptions do not hold, a random forest for regression 
 must be used. This question will be used to complete the report.
 
 ***2. Before the operation, can we predict how much pain a patient will have after the operation?***
 Since pain is measured as ordinal categories, a model designed for classification would fit this specification. Referencing (mention table figure) we see that 25% of data points are missing values 
-for the questions regarding pain. If we were to use an unsupervised model it may not capture the true relationship between predictors and the outcome variable due to the vast number of unlabelled data points for a siginificant predictor. To 
+for the questions regarding pain. If we were to use an unsupervised model it may not capture the true relationship between predictors and the outcome variable due to the vast number of unlabelled data points for a significant predictor. To 
 tackle this issue of missing data, a semi-supervised model such as a semi-supervised support vector machine can overcome the missing data barrier. The semi-supervised SVM would use 
-a mixture of labelled an unlabelled data to create descion boundaries for the different pain categories, and predict the positioning of a data point to its relative class given the presence 
-of certain predictor variables. The level of computation a semi-supervised SVM has may be determinal to the models overall performance, but coupled with the fact that there are many other missing 
+a mixture of labelled an unlabelled data to create decision boundaries for the different pain categories, and predict the positioning of a data point to its relative class given the presence 
+of certain predictor variables. The level of computation a semi-supervised SVM has may be detrimental to the model’s overall performance, but coupled with the fact that there are many other missing 
 values in other questions regarding the QOL status of the patient, imputation on specific question would be difficult to complete without clinical knowledge to inform the possible current state of the patient. Therefore, 
-the increased computational power for the model may be benefical when trying to address the gaps in data. 
+the increased computational power for the model may be beneficial when trying to address the gaps in data. 
 
 ***3. Before the operation, can we calculate how many patients have had previous surgery?***
 
@@ -129,23 +136,31 @@ patiens that have had the previous surgery. The results is binary wether they ha
 
 ## Model building to answer chosen question
 
-# 1.	Data splitting 
+### 1.	Data splitting 
 
-Before the data is split into relevant train/test splits. The issue of Age Band and Gender both missing 35% of their data needs to be a handled. The following imputation is simple and doesnt 
-use external questions or factors to inform descion making. Age Band is recoded into group numbers and the median of the group numbers is taken. Then the median value is then imputed to the missing data. 
+Before the data is split into relevant train/test splits. The issue of Age Band and Gender both missing 35% of their data needs to be a handled. The following imputation is simple and doesn’t 
+use external questions or factors to inform decision making. Age Band is recoded into group numbers and the median of the group numbers is taken. Then the median value is then imputed to the missing data. 
 
-Imputation of the Gender column is slightly more complex, with the method being a k Nearest Neighbour (kNN) approach. This approach tries to maintain the randomness of the gender data points, 
-(reference table) looking at the table there are 6% more females that get the surgery than males. Therefore using a simple 50-50 or a median split would lose the close difference in value between 
-the different genders. The KNN maintian thre nuisance in this split.
-The following table summaries the changes in the data values after imputation, the changes are as follows
-* Age Band - Median: Category 3, increase of 35% or 1,603 data points
+Imputation of the Gender column is slightly more complex, with the method being a k Nearest Neighbour (KNN) approach. This approach tries to maintain the randomness of the gender data points, 
+(reference table) looking at the table there are 6% more females that get the surgery than males. Therefore, using a simple 50-50 or a median split would lose the close difference in value between 
+the different genders. The KNN maintain the nuisance in this split.
+The following table summarises the changes in the data values after imputation, the changes are as follows
+* Age Band - Median = Category 3. Increase of 35% or 1,603 patients in category 3
 * Gender - Male: Increase of 693 cases (+26%), Female: Increase of 910 cases (+20%)
 
-Replacing missing values was only complete for age and gender since these values can be more easily accounted for in comparison to missing questionare values. Replacing missing questionare values
+Replacing missing values was only complete for age and gender since these values can be more easily accounted for in comparison to missing questionnaire values. Replacing missing questionnaire values
 may have serious consequences to the predictions of the model, creating false equivalences. With certain predictors given more importance due to the inputted data. Removing these data values was not an option, 
-since we would be losing up to 80% of the questionare data with some questions (hilight table). To ensure that the integrity of the the patient reported outcomes remain the same, more emphasis 
-will be placed on the models to handle missing data such as a random forest (RF) model for regression. RF models dont need imputation of missing values and they dont suffer 
-from underpreforming from the lack of labelled data points. This is due to their automatic handiling of missing data through surrogate splits. The randomForest package in R states in their documentation 
+since we would be losing up to 80% of the questionnaire data with some questions (highlight table). To ensure that the integrity of the patient reported outcomes remain the same, more emphasis 
+will be placed on the models to handle missing data such as a random forest (RF) model for regression. RF models don’t need imputation of missing values and they don’t suffer 
+from underperforming from the lack of labelled data points. This is due to their automatic handling of missing data through surrogate splits. The randomForest package in R states in their documentation 
+that imputation and handling of missing values will only take place for values coded as NA, since the missing values in this dataset are coded as 9, these will be changed. 
+
+As per the assignment specifications, 9 will be handled as "No" for any columns pertaining to a previous diagnosis of condition. 9 will be recoded to 2 for these answers. The randomForest package
+comes with its own built in imputation algorithm, based on first using a median/mean as a baseline to then create its own forests based on proximity data points. Values missing from the questionnaire
+will be replaced with the calculated values of the random forest imputation algorithm.
+
+The model will be evaluated with and without imputed data points through the resultant R^2 value and the Mean Squared Error (MSE). 
+
 
 ```{r imputation of data}
 #Recode age bands into numeric groupings for an easier interpreation of the median
@@ -159,52 +174,94 @@ kneeData$"Age Band" <- as.numeric(as.character(kneeData$"Age Band"))
 kneeData["Age Band"][is.na(kneeData["Age Band"])] <- median(kneeData$"Age Band", na.rm = TRUE)
 kneeData[kneeData == "*"] <- NA
 
-#Call a KNN function designed to split the 
+#Call a KNN function designed to split the missing values comparing only to the nearest one neighbour
 imputedGender <- kNN(kneeData, k = 1)
 kneeData$Gender <- imputedGender$Gender
 kneeData$Gender <- as.numeric(kneeData$Gender)
 
-kneeData |> tbl_summary(include=c("Age Band","Gender" ))
+#Functions to replace missing values to specified values
+nineToNo <- function(x){
+    ifelse(x==9,2,x)
+}
+
+#Note: Imputation for the random forest package can only read NA values, all 9 values have to be recoded to NA
+nineToNA <- function(x){
+    ifelse(x==9,NA,x)
+}
+colsToNo <- c(
+    "Heart Disease", "High Bp", "Stroke", "Circulation", "Lung Disease",
+    "Diabetes", "Kidney Disease", "Nervous System", "Liver Disease",
+     "Cancer", "Depression", "Arthritis"
+)
+
+#Function calls to recode missing values
+setDT(kneeData)[, (colsToNo) := lapply(.SD, nineToNo), .SDcols=colsToNo]
+kneeData[, (setdiff(names(kneeData), "Post-Op Q EQ5D Index")) := lapply(.SD, nineToNA), 
+          .SDcols = setdiff(names(kneeData), "Post-Op Q EQ5D Index")]
+
+#Call function to handle missing values for questionare questions in dataset 
+kneeData <- na.roughfix(kneeData)
+
+kneeData |> tbl_summary(
+    include = c("Age Band", "Gender", "Heart Disease", "Post-Op Q Assisted By"
+))
+
+#Dataset is now split into training and test splits with 
+#70% of current data in training with 30% reserved for testing
 kneeSplit <- kneeData %>%
     initial_split(prop = 0.7, strata = "Post-Op Q EQ5D Index")
     kneeTrain <- training(kneeSplit)
-    kneeTest <- testing(kneeSplit)  
+    kneeTest <- testing(kneeSplit)
+
+glimpse(kneeData)
+print(colnames(kneeData))
 ```
 
-2.	Selection and preprocessing of predictors 
+### 2.	Selection and preprocessing of predictors 
+The first step to select important predictors to the model is to preform correlation analysis to identify predictors. There are 77 possible predictors in this dataset
+visually representing all the possible predictor variables made the correlation plot difficult to interpret, therefore a selection of predictor variables
+have been selected from the complete correlation plot (ref Appendix ) only if they had a value +/- 0.5 associated with any of the variables. This is a purely
+numeric based approach, however, there may be certain variables that hold clinical significance and wish to be included in the model to evaluate their relationship. 
 
 ```{r correlation analysis}
+#Trailing spaces were present in some column names, these needed to be stripped. 
+#All spaces in the columns were replaced with a . character
+colnames(kneeTrain) <- make.names(colnames(kneeTrain))
+colnames(kneeTest) <- make.names(colnames(kneeTest))
 
-kneeCorr <- cor(kneeTrain)
-corrplot(kneeCorr, method = "color", type = "lower", tl.col = "black", tl.srt = 50, number.cex = 0.5, tl.cex = 0.3)
+kneeCorColumns <- kneeTrain[, c(
+    "Post.Op.Q.Mobility", "Post.Op.Q.Self.Care", "Post.Op.Q.Discomfort", 
+    "Post.Op.Q.EQ5D.Index.Profile","Post.Op.Q.EQ.VAS", "Knee.Replacement.Post.Op.Q.Pain", 
+    "Knee.Replacement.Post.Op.Q.Night.Pain","Knee.Replacement.Post.Op.Q.Washing", 
+    "Knee.Replacement.Post.Op.Q.Transport", "Knee.Replacement.Post.Op.Q.Walking",
+    "Knee.Replacement.Post.Op.Q.Standing", "Knee.Replacement.Post.Op.Q.Limping", 
+    "Knee.Replacement.Post.Op.Q.Work","Knee.Replacement.Post.Op.Q.Confidence", 
+    "Knee.Replacement.Post.Op.Q.Shopping", "Knee.Replacement.Post.Op.Q.Stairs",
+    "Knee.Replacement.Post.Op.Q.Score"
+)]
 
-
-kneeCorrPostOp <- t(kneeCorr[, c(46), drop = FALSE])
-corrplot(kneeCorrPostOp,method = "number", tl.col = "black", tl.srt = 50,tl.cex = 0.3, cex.axis=0.3, number.cex = 0.2)
-for (i in seq_along(kneeTrain)) {
-  cat("Index:", i, "- Name:", colnames(kneeTrain)[i], "\n")
-}
+kneeCorr <- cor(kneeCorColumns)
+corrplot(kneeCorr,
+    type = "lower", tl.srt = 50,
+    tl.col = "black", number.cex = 0.5, tl.cex = 0.6
+)
 
 ```
 
-The full correlation plot is displayed above but the values and their labels are difficult to read with the 77 variables that we have to consider. Extrcation of siginificant 
-correlations in the main plot will be used to hilight the variables that will be used as predictors for the model. Correlation values were observed through the plots and 
-all predictor values that were above 0.5 or below -0.5 were considered as significant predictors. This is puerly numerically based, but given clinical expertise there 
-may be some predictors that may want to be included into the final model.  
-
-
 ```{r specifiy-recipie}
-colnames(kneeTrain) <- make.names(colnames(kneeTrain))
-colnames(kneeTest) <- make.names(colnames(kneeTest))
+
+# Create a recipie with signficant predictor variables
+# Recipie used for more readable code when fitting the model, assignment specificatoins mention not fitting more than one model but
+# In the case of multiple models being fitted this recipie can be used multiple times to the parameter specifications
 
 kneeModelRec <- kneeTrain %>%
     recipe(Post.Op.Q.EQ5D.Index ~
         Post.Op.Q.Mobility +
         Post.Op.Q.Self.Care +
-        Post.Op.Q.Discomfort + 
+        Post.Op.Q.Discomfort +
         Post.Op.Q.EQ5D.Index.Profile +
         Post.Op.Q.EQ.VAS +
-        Knee.Replacement.Post.Op.Q.Pain + 
+        Knee.Replacement.Post.Op.Q.Pain +
         Knee.Replacement.Post.Op.Q.Night.Pain +
         Knee.Replacement.Post.Op.Q.Washing +
         Knee.Replacement.Post.Op.Q.Transport +
@@ -220,26 +277,104 @@ kneeModelRec <- kneeTrain %>%
     step_corr(all_predictors())
 
 ```
-3.	Model specification and training
+### 3.	Model specification and training
+Missing values in the dataset have been addressed alongside idenifying important predictor variables that have influence on the dependent variable. There still lies the issue of 
+using a linear regression model or a random forest. Due to its simpler computation and interpratibility linear models are preffered but a series of assumptions need to hold true, 
+in order to use this model. The following code runs a simple Q-Q test that checks for normality within the data. 
+```{r Check Linear Assumptions}
+qqnorm(kneeTrain$Post.Op.Q.EQ5D.Index, main = "Q-Q Plot for Normality")
+qqline(kneeTrain$Post.Op.Q.EQ5D.Index, col="red")
 
-```{r call model}
-kneeRandForest <- rand_forest() %>%
+```
+As shown in the Q-Q plot, the data in terms of the dependent variable does not hold the assumption of normality. Since this assumption
+is unmet, a random forest plot will be used. Random forest plots are capable of handiling regression problems with non-linear properties. 
+
+
+### Calling the Random Forest Model
+The following code depicts the RF model being called for the purposes of fitting a regression model. RF works based on ensemble learning, where multiple decision trees are used to reach a
+consensus on the. In this problem specification the tree first starts off with the full complete training dataset and creates multiple branches of decision trees, giving 
+each decision tree its own sample size (with replacement) of the original training dataset. This process is repeated for every decision tree in the RF as shown in the
+workflow below. These decision trees all contain a unique subset of the training data and reach a predicted value for the Post EQ5 Index based on their own subset of the data. It’s important 
+to note that each subset may not have the same types of significant variables as found in the correlation plot when predicting the value. This is an important feature, as this is how the model
+determines which variables are important to the model by comparing the accuracy of the trees that contain certain variables with the actual value of the Post EQ5 Index To ensure that the trees have a collective prediction that is accurate, 
+they go through a process known as bootstrapping designed to average out the predicted values across all the different trees. There is an optimal number of decision trees to consider that will 
+decrease the overall variance while maintaining computational efficiency, but having a larger number of trees doesn’t necessarily mean increased model performance.
+The model reaches a point where the increase of computation does not justify the marginal increase in the predicted value. This problem arises due to overfitting within the model, where the
+RF starts to learn from noise in the data, rather than making generalisable predictions based on the data. To find the optimal number of trees the model would have to go through
+hyper tuning tests which is outside the scope of this report, therefore the default value of 500 decision trees built in within the randomForest package will be used. 
+
+
+```{r call model }
+
+
+#Initate random forest model
+kneeRandForestNoImportance <- rand_forest() %>%
     set_mode("regression") %>%
     set_engine("randomForest")
+
+# Use recipie against specifications of model
+kneeWorkflowNoImp <- workflow() %>%
+    add_recipe(kneeModelRec) %>%
+    add_model(kneeRandForestNoImportance)
+
+# Fit model with training data
+kneeFitModelNoImp <- kneeWorkflowNoImp %>%
+    fit(data = kneeTrain)
+
+#Specify a model with built in importance feature for random forest
+kneeRandForest <- rand_forest() %>%
+    set_mode("regression") %>%
+    set_engine("randomForest", importance = TRUE)
 
 kneeWorkflow <- workflow() %>%
     add_recipe(kneeModelRec) %>%
     add_model(kneeRandForest)
 
+
+extractRF <- 
 kneeFitModel <- kneeWorkflow %>%
     fit(data = kneeTrain)
 ```
 
-```{r identify important vraibles}
-kneeFitModel %>%
+
+### Identifying Influential Variables
+Out of the 16 possible significant variables, only 4 showed a degree of importance. In this report the threshold for importance was categorised as any value of importance
+greater than 20 units. The way in which the vip package places importance on variables is significant to our understanding of how variables affect the model and how they are important to the final Post EQ5 Index.
+The vip package uses a method known as Out-Of-Bag (OOB) to create validation sets errors for each decision tree. This means that each predictor in the validation set is shuffled around each of the trees and the
+changes in the validation set errors (VSE) for each of the trees are recorded, the trees that exhibit a great change in the VSE errors on the change of a predictor in the sample set, the value is noted and the averaged
+improvement of the VSE upon the addition of a certain variable is recorded. The documentation notes certain features that impact the validity of the results, such as: high correlation in the variables, varying 
+scales of measurement for the predictor variables and larger sample sizes resulting in more accurate VSE scores. In the context of this report, there were some issues encountered that directly affect the way the data interacts with 
+the vip package. Upon visual inspection there was a certain predictor "Knee Replacement Post Op Q Score" that would change between +/5 units in the importance score, this was significant due to the threshold of an important variable 
+being 20 units and depending on the specific run, that specific variable was considered important. Knee Replacement Post OP Q score can be assumed to be correlated to the Post Op Q Pain score, looking at the PROMS data dictionary, it states
+
+"Each of the KR question has 5 possible responses which each are attributable 0-4 points. The KR score is
+derived by adding the points for each question. The maximum number of points is 48 which would signify
+the best outcome, the minimum being 0."
+
+Since the KR Post Op Q score is an aggregate variable it will change depending on the specific variables included in the sample sizes of the decision tress in the RF model
+ 
+```{r identify important variables}
+kneeFitModelNoImp %>%
     extract_fit_parsnip() %>%
-    vip(num_features=4)
+    vip(num_features=5)
 ```
+
+```{r MAE method, fig.width=10, fig.height=5}
+# Trained RF model needs to be extracted from tidymodels workflow in order to use it within varImpPlot function
+extractRF <- extract_fit_parsnip(kneeFitModel)
+MeanImportanceValues <- importance(extractRF$fit)
+barplot(
+    sort(t(MeanImportanceValues)),
+    beside = TRUE,
+    names.arg=rownames(MeanImportanceValues),
+    las=2,
+    cex.names=0.5, 
+    horiz=TRUE
+
+)
+```
+
+
 
 4.	Model evaluation 
 Code has 
@@ -264,12 +399,16 @@ kneeResult %>%
     ylab("Predicted Outcome Values")
 
 ```
-<!-- # ```{r cross fold k validation models}
-# crossVal <- trainControl(method = "cv", number = 8)
-
-# kFoldModel <- 
-
-# ``` -->
 
 ## Limitations of machine learning model
+
+Real problem with the number of trees being used in the model, the number of descion trees is simply not enough as the VSE error for certain predictors keep changing by +/- 5% which is significant when you have some 
+variables within the threshold. 
+
+## Appendix
+
+```{r Full Correlation Plot}
+kneeCorr <- cor(kneeTrain)
+corrplot(kneeCorr, method = "color", type = "lower", tl.col = "black", tl.srt = 50, number.cex = 0.5, tl.cex = 0.3)
+```
 
