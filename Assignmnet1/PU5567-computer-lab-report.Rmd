@@ -47,7 +47,7 @@ kneeData <- kneeData %>%
     select(-Procedure, -Year, -"Revision Flag", -"Provider Code") %>%
     drop_na() %>%
     unique()
-kneeDataNoImpute <- kneeData
+
 ```
 
 \newpage
@@ -158,8 +158,6 @@ that imputation and handling of missing values will only take place for values c
 As per the assignment specifications, 9 will be handled as "No" for any columns pertaining to a previous diagnosis of condition. 9 will be recoded to 2 for these answers. The randomForest package
 comes with its own built in imputation algorithm, based on first using a median/mean as a baseline to then create its own forests based on proximity data points. Values missing from the questionnaire
 will be replaced with the calculated values of the random forest imputation algorithm.
-
-The model will be evaluated with and without imputed data points through the resultant R^2 value and the Mean Squared Error (MSE). 
 
 
 ```{r imputation of data}
@@ -301,38 +299,39 @@ they go through a process known as bootstrapping designed to average out the pre
 decrease the overall variance while maintaining computational efficiency, but having a larger number of trees doesn’t necessarily mean increased model performance.
 The model reaches a point where the increase of computation does not justify the marginal increase in the predicted value. This problem arises due to overfitting within the model, where the
 RF starts to learn from noise in the data, rather than making generalisable predictions based on the data. To find the optimal number of trees the model would have to go through
-hyper tuning tests which is outside the scope of this report, therefore the default value of 500 decision trees built in within the randomForest package will be used. 
+hyper tuning tests which is outside the scope of this report, therefore the default value of decision trees built in within the randomForest package will be used. This value was not citied 
+within the documentation.  
 
 
 ```{r call model }
 
 
 #Initate random forest model
-kneeRandForestNoImportance <- rand_forest() %>%
+kneeRandForestMDI <- rand_forest() %>%
     set_mode("regression") %>%
     set_engine("randomForest")
 
 # Use recipie against specifications of model
-kneeWorkflowNoImp <- workflow() %>%
+kneeWorkflowMDI <- workflow() %>%
     add_recipe(kneeModelRec) %>%
-    add_model(kneeRandForestNoImportance)
+    add_model(kneeRandForestMDI)
 
 # Fit model with training data
-kneeFitModelNoImp <- kneeWorkflowNoImp %>%
+kneeFitModelMDI <- kneeWorkflowMDI %>%
     fit(data = kneeTrain)
 
-#Specify a model with built in importance feature for random forest
-kneeRandForest <- rand_forest() %>%
+#Specify a model with built in importance feature for random forest that calulates both OOB and MDI
+kneeRandForestVSE <- rand_forest() %>%
     set_mode("regression") %>%
     set_engine("randomForest", importance = TRUE)
 
-kneeWorkflow <- workflow() %>%
+kneeWorkflowVSE <- workflow() %>%
     add_recipe(kneeModelRec) %>%
-    add_model(kneeRandForest)
+    add_model(kneeRandForestVSE)
 
 
 extractRF <- 
-kneeFitModel <- kneeWorkflow %>%
+kneeFitModelVSE <- kneeWorkflowVSE %>%
     fit(data = kneeTrain)
 ```
 
@@ -340,58 +339,88 @@ kneeFitModel <- kneeWorkflow %>%
 ### Identifying Influential Variables
 Out of the 16 possible significant variables, only 4 showed a degree of importance. In this report the threshold for importance was categorised as any value of importance
 greater than 20 units. The way in which the vip package places importance on variables is significant to our understanding of how variables affect the model and how they are important to the final Post EQ5 Index.
-The vip package uses a method known as Out-Of-Bag (OOB) to create validation sets errors for each decision tree. This means that each predictor in the validation set is shuffled around each of the trees and the
-changes in the validation set errors (VSE) for each of the trees are recorded, the trees that exhibit a great change in the VSE errors on the change of a predictor in the sample set, the value is noted and the averaged
-improvement of the VSE upon the addition of a certain variable is recorded. The documentation notes certain features that impact the validity of the results, such as: high correlation in the variables, varying 
-scales of measurement for the predictor variables and larger sample sizes resulting in more accurate VSE scores. In the context of this report, there were some issues encountered that directly affect the way the data interacts with 
-the vip package. Upon visual inspection there was a certain predictor "Knee Replacement Post Op Q Score" that would change between +/5 units in the importance score, this was significant due to the threshold of an important variable 
+The vip package uses a method known as Mean Decrease Impurity (MDI). MDI works based on calculating the total decrease in node impurity, that is, the total amount of misclassified/inaccurate
+values within nodes in a decision tree. The MDI is then averaged across all the trees and the predictor variables that decrease the MDI value are considered to have the most importance in the model. 
+The documentation notes certain features that impact the validity of the results, such as: high correlation in the variables, varying 
+scales of measurement for the predictor variables and MDI preforming better in larger ensemble sizes. In the context of this report, there were some issues encountered that directly affect the way the data interacts with 
+the vip package. Upon visual inspection there was a certain predictor "Knee Replacement Post Op Q Score" that would change between +/8 units in the importance score, this was significant due to the threshold of an important variable 
 being 20 units and depending on the specific run, that specific variable was considered important. Knee Replacement Post OP Q score can be assumed to be correlated to the Post Op Q Pain score, looking at the PROMS data dictionary, it states
 
 "Each of the KR question has 5 possible responses which each are attributable 0-4 points. The KR score is
 derived by adding the points for each question. The maximum number of points is 48 which would signify
 the best outcome, the minimum being 0."
 
-Since the KR Post Op Q score is an aggregate variable it will change depending on the specific variables included in the sample sizes of the decision tress in the RF model
- 
+Since the KR Post Op Q score is an aggregate variable, it will change depending on the specific variables included in the sample sizes of the decision tress in the RF model. This high correlation between 
+Knee Post OP Q Score and the presence of other variables within a specific sample of the decision tree may indicate that this form of identifying variables is inaccurate. This could have significant impact in a clinical setting. 
+Providing inaccurate estimations on predictor variables would not aid clinical professionals on making well informed decisions on creating a treatment plan for patients in order to maximise health outcomes after their knee replacement surgery.
+Another form of identifying important variables is implemented using the Out-Of-Bag (OOB) method, where Validation Set Errors (VSE) are created for each tree. For each VSE predictors will be randomly shuffled around the trees
+and the variables that consistently decrease the VSE error across the decision trees will have a higher importance value. 
+
 ```{r identify important variables}
-kneeFitModelNoImp %>%
+kneeFitModelMDI %>%
     extract_fit_parsnip() %>%
-    vip(num_features=5)
+    vip(num_features=8)
 ```
 
-```{r MAE method, fig.width=10, fig.height=5}
-# Trained RF model needs to be extracted from tidymodels workflow in order to use it within varImpPlot function
-extractRF <- extract_fit_parsnip(kneeFitModel)
-MeanImportanceValues <- importance(extractRF$fit)
-barplot(
-    sort(t(MeanImportanceValues)),
-    beside = TRUE,
-    names.arg=rownames(MeanImportanceValues),
-    las=2,
-    cex.names=0.5, 
-    horiz=TRUE
 
+```{r MAE method, fig.width=10, fig.height=10}
+# Trained RF model needs to be extracted from tidymodels workflow in order to use it as matrix object
+extractRF <- extract_fit_parsnip(kneeFitModelVSE)
+MeanImportanceValues <- importance(extractRF$fit)
+
+# Extract only the OOB importance values from the importance fitted RF model
+MeanImportanceValuesNode <- MeanImportanceValues[, 1, drop = FALSE]
+
+# Line taken from https://www.statology.org/sort-matrix-in-r/
+sortedMeanImportanceValues <- MeanImportanceValuesNode[order(MeanImportanceValuesNode[, 1], decreasing = TRUE), , drop=FALSE] 
+
+colors <- rainbow(nrow(MeanImportanceValuesNode))
+
+plot<- barplot(
+    t(sortedMeanImportanceValues),
+    beside = TRUE,
+    las = 2,
+    cex.names = 0.5,
+    col=colors,
+    xaxt="n",
+    ylab="Importance"
+
+)
+text(
+    x = plot,
+    y = sortedMeanImportanceValues + 1.0, 
+    labels = round(sortedMeanImportanceValues)
+)
+legend("topright",
+    legend = rownames(sortedMeanImportanceValues), 
+    fill = colors, 
+    title = "Predictors"
 )
 ```
 
+As seen through both graphs, there are three variables that consistently show themselves as being important to the model: Post Op Q Discomfort, Post Op Q Self Care, Post Op Q Mobility. Running the second form of identifying
+important variables were found to have greatly differing values from the MID method. Past these 3 variables it is unclear which variables are influential to the model, these limitations will be discussed.
 
+## 4.	Model evaluation 
+The following metrics define the performance of the model. There is no distinction between MDI or OOB when it comes to model performance since these methods only differ in the way they select variables and train/test the models
+with the same RF model. The model is seen to have a good overall fit with the data. The plot of actual/predicted outcome variables shows a good enough distance to indicate the model is not overfitting to the training data but seems 
+to be underperforming in modelling the correct outcome data. Overall, the RF model is a good fit for this data with certain predictor variables being identified as significantly important variables to the model. This model
+may be used in aiding clinical decision making in improving patient health outcomes after knee replacement surgery. 
 
-4.	Model evaluation 
-Code has 
 
 ```{r}
-predEQVal <- kneeFitModel %>%
+predEQValVSE <- kneeFitModelVSE %>%
     predict(new_data = kneeTest)
 
-kneeResult <- kneeTest %>%
-    bind_cols(predEQVal) %>%
+kneeResultVSE <- kneeTest %>%
+    bind_cols(predEQValVSE) %>%
     rename(predEQ = .pred)
 
-metrics(kneeResult, truth = Post.Op.Q.EQ5D.Index, estimate = predEQ)
+metrics(kneeResultVSE, truth = Post.Op.Q.EQ5D.Index, estimate = predEQ)
 ```
 
 ```{r}
-kneeResult %>%
+kneeResultVSE %>%
     ggplot(aes(x = Post.Op.Q.EQ5D.Index, y = predEQ)) +
     geom_abline(intercept = 0, slope = 1) +
     geom_point() +
@@ -402,9 +431,24 @@ kneeResult %>%
 
 ## Limitations of machine learning model
 
-Real problem with the number of trees being used in the model, the number of descion trees is simply not enough as the VSE error for certain predictors keep changing by +/- 5% which is significant when you have some 
-variables within the threshold. 
+There are serveral limitations to this model that will be affecting the performance
 
+**Default number of descion trees being used, actual value is unknown** 
+    - Both the VIP and randomForest package document that the model performance preforms better with a larger ensemble size. This could be due to the fact that there are more descion trees to make predictions on therefore the overall prediction would be more accurate
+    - Not necessarily more descion trees equates to a more precise prediction outcome. Comuputational cost will outweigh the gains in how precise predicted outcome is
+    - To address this issue, parameter hypertuning needs to be conducted to model the perfomance of the RF model with an increasing number of descion trees. 
+
+**High level of correlation between variables**
+    - Between the predictor variables there are a few variables that represent the same concept such as the EQ5 Index and the EQ VAS values. The Knee Replacment Post Op Q Pain and Post Op Q Discomfort are also highly correlated with each other as they both represent a level of pain after the surgery. 
+    - These metrics may have different meanings in a clinical setting that would set a precedence for different outcomes. 
+    - To address this issue, further clarification from the authors of the data would indicate if these variables are correlated together as hypothesised. Clinical input would also aid in the interpretation of how relevant these variables would be in the process of creating guidelines for patient outcomes. 
+
+**High levels of missing data**
+    - Many of the data points were missing and were imputed with basic data imputation. This may influence the model towards predicting certain outcomes that otherwise would have no relvance, creating a false equivalency. 
+    - Missing data can be categorised as missing at random (MAR) or missing not at random (MNAR). Due to the nature of the data being self reported and there being no incentives being not reporting data this data can be assume to be MAR
+    - More complex methods of data imputation can be used to address this issues through novel approachs directly geared towards healthcare settings where datasets exhibit a high level of cardinality.  
+
+\newpage
 ## Appendix
 
 ```{r Full Correlation Plot}
@@ -412,3 +456,5 @@ kneeCorr <- cor(kneeTrain)
 corrplot(kneeCorr, method = "color", type = "lower", tl.col = "black", tl.srt = 50, number.cex = 0.5, tl.cex = 0.3)
 ```
 
+# References
+Cappelletti, L., Fontana, T., Di Donato, G.W., Di Tucci, L., Casiraghi, E. and Valentini, G., 2020. Complex data imputation by auto-encoders and convolutional neural networks—A case study on genome gap-filling. Computers, 9(2), p.37.
